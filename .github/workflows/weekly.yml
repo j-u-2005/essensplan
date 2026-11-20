@@ -1,0 +1,74 @@
+name: Wochenplan
+
+on:
+  schedule:
+    # Freitag 16:00 UTC = 17:00 (Winter) bzw. 18:00 (Sommer) Uhr deutscher Zeit
+    - cron: '0 16 * * 5'
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'Was ausführen?'
+        type: choice
+        default: all
+        options:
+          - all
+          - import
+          - plan
+          - reblock
+      week:
+        description: 'Montag der Zielwoche (YYYY-MM-DD), leer = automatisch'
+        required: false
+        default: ''
+      force:
+        description: 'Vorhandenen Plan der Woche überschreiben'
+        type: choice
+        default: 'false'
+        options:
+          - 'false'
+          - 'true'
+      import_limit:
+        description: 'Neue Rezeptseiten pro Quelle'
+        required: false
+        default: '100'
+
+concurrency:
+  group: wochenplan
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests
+        run: node --test "tests/*.test.mjs"
+
+      - name: Sperrliste neu anwenden
+        if: ${{ inputs.step == 'reblock' }}
+        env:
+          REBLOCK: '1'
+        run: node scripts/import-recipes.mjs
+
+      - name: Rezepte importieren
+        if: ${{ inputs.step != 'plan' && inputs.step != 'reblock' }}
+        env:
+          IMPORT_LIMIT: ${{ inputs.import_limit || '60' }}
+        run: node scripts/import-recipes.mjs
+
+      - name: Plan erzeugen
+        if: ${{ inputs.step != 'import' && inputs.step != 'reblock' }}
+        env:
+          WEEK_START: ${{ inputs.week }}
+          FORCE: ${{ inputs.force == 'true' && '1' || '' }}
+        run: node scripts/generate-plan.mjs
