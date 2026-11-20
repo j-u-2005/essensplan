@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "essensplan",
-      "database_id": "HIER-DIE-DATABASE-ID-EINTRAGEN"
+      "database_id": "22f7ed9c-7de8-4301-824c-00e913c1fc66"
     }
   ],
   "observability": { "enabled": true }
