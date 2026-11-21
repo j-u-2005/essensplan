@@ -47,28 +47,58 @@ const r = spawnSync(chrome, ['--headless=new', '--no-sandbox', '--disable-gpu', 
 if (r.status !== 0 || !(await exists(pdfPath))) throw new Error(`PDF-Erzeugung fehlgeschlagen: ${r.stderr}`);
 console.log(`PDF erstellt: ${pdfPath}`);
 
-const key = process.env.RESEND_API_KEY;
-const to = process.env.MAIL_TO;
-if (!key || !to) {
-  console.log('RESEND_API_KEY/MAIL_TO nicht gesetzt – kein Mailversand (PDF liegt als Artefakt im Lauf).');
-  process.exit(0);
-}
-const kwNum = (() => {
+const subjectKw = (() => {
   const d = new Date(`${week}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 3 - ((d.getUTCDay() + 6) % 7));
   const j = new Date(Date.UTC(d.getUTCFullYear(), 0, 4, 12));
   return 1 + Math.round(((d - j) / 86400000 - 3 + ((j.getUTCDay() + 6) % 7)) / 7);
 })();
+const to = (process.env.MAIL_TO || '').split(',').map((s) => s.trim()).filter(Boolean);
+const subject = `Essensplan KW ${subjectKw}`;
+const text = `Hallo,\n\nder Essensplan für KW ${subjectKw} ist da: Wochenplan, Vorbereitung (Sonntag und Mittwochabend) und Einkaufsliste im Anhang.\n`;
+const filename = `essensplan-kw${subjectKw}.pdf`;
+
+if (!to.length) {
+  console.log('MAIL_TO nicht gesetzt – kein Mailversand (PDF liegt als Artefakt im Lauf).');
+  process.exit(0);
+}
+
+if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+  // Versand über ein vorhandenes Postfach (Gmail, GMX, …) per SMTP
+  const { default: nodemailer } = await import('nodemailer');
+  const port = Number(process.env.SMTP_PORT || 465);
+  const transport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port,
+    secure: port === 465,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+  const info = await transport.sendMail({
+    from: process.env.MAIL_FROM || `Essensplan <${process.env.SMTP_USER}>`,
+    to,
+    subject,
+    text,
+    attachments: [{ filename, path: pdfPath, contentType: 'application/pdf' }],
+  });
+  console.log('Mail per SMTP verschickt an', to.join(', '), '–', info.response || info.messageId);
+  process.exit(0);
+}
+
+const key = process.env.RESEND_API_KEY;
+if (!key) {
+  console.log('Weder SMTP_USER/SMTP_PASS noch RESEND_API_KEY gesetzt – kein Mailversand (PDF liegt als Artefakt im Lauf).');
+  process.exit(0);
+}
 const res = await fetch('https://api.resend.com/emails', {
   method: 'POST',
   headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
   body: JSON.stringify({
     from: process.env.MAIL_FROM || 'Essensplan <onboarding@resend.dev>',
-    to: to.split(',').map((s) => s.trim()),
-    subject: `Essensplan KW ${kwNum}`,
-    html: `<p>Hallo, der Essensplan für KW ${kwNum} ist da: Wochenplan, Vorbereitung (Sonntag und Mittwochabend) und Einkaufsliste im Anhang.</p>`,
-    attachments: [{ filename: `essensplan-kw${kwNum}.pdf`, content: (await readFile(pdfPath)).toString('base64') }],
+    to,
+    subject,
+    text,
+    attachments: [{ filename, content: (await readFile(pdfPath)).toString('base64') }],
   }),
 });
 if (!res.ok) throw new Error(`Resend: ${res.status} ${await res.text()}`);
-console.log('Mail verschickt an', to);
+console.log('Mail über Resend verschickt an', to.join(', '));
