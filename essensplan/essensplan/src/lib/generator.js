@@ -58,6 +58,7 @@ function isEligible(r, slot, days, ctx, level, needBatch, minShelf) {
   if (slot === 'lunch' && !(r.cold_ok || r.micro_ok)) return false;
   if (slot === 'dinner' && r.minutes > ctx.rules.dinner_max_minutes * (level >= 2 ? 1.5 : 1)) return false;
   if (slot === 'snack' && r.minutes > ctx.rules.snack_max_minutes * (level >= 2 ? 2 : 1)) return false;
+  if (slot === 'breakfast' && !r.sweet) return false;
   if (r.oats && ctx.oats >= ctx.rules.oats_max_per_week) return false;
   if (needBatch && !r.batch_ok) return false;
   if (needBatch && level < 2 && r.shelf_days < minShelf) return false;
@@ -263,7 +264,19 @@ export function generatePlan({ recipes, params, rules, seed, recentIds = [] }) {
     addItem(d, 'firma', r, { note: 'Vorkochen, in der Firma nur aufwärmen' });
   }
   planSlot('breakfast', workdays);
-  planSlot('snack', workdays);
+
+  // Wochenende: Frühstück und Mittag jeweils einzeln (frisch, ohne Meal-Prep-Blöcke)
+  for (const d of [5, 6]) {
+    for (const slot of ['breakfast', 'lunch']) {
+      const r = pickRecipe(slot, [d], ctx);
+      if (!r) {
+        addMissing(d, slot);
+        continue;
+      }
+      register(r, slot, ctx);
+      addItem(d, slot, r);
+    }
+  }
 
   items.sort((a, b) => a.day - b.day || SLOT_ORDER[a.slot] - SLOT_ORDER[b.slot]);
   return { items, warnings, stats: { oats: ctx.oats, effort: ctx.effort } };

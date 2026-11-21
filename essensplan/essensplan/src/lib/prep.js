@@ -36,8 +36,16 @@ export function buildPrepPlan(items, recipes, rules) {
 
   // Alles andere (Frühstück, Mittag, Firma, Snack), außer Reste vom Abendessen
   const groups = new Map();
+  const fresh = [];
   for (const i of items) {
     if (i.kind !== 'recipe' || !i.recipe_id || i.slot === 'dinner' || i.leftover) continue;
+    if (i.day >= 5) {
+      // Wochenende: wird am Tag selbst frisch zubereitet
+      const r = recipes.get(i.recipe_id) || { title: '?', effort: 15 };
+      fresh.push({ recipe_id: i.recipe_id, title: r.title, url: r.url, minutes: r.effort ?? 15, portions: i.servings, uses: [{ day: i.day, slot: i.slot, servings: i.servings }] });
+      addUsage(i.recipe_id, `${DAY_SHORT[i.day]} frisch zubereiten`, i.day * 10 + 1);
+      continue;
+    }
     const g = groups.get(i.recipe_id) || { recipe_id: i.recipe_id, uses: [], portions: 0 };
     g.uses.push({ day: i.day, slot: i.slot, servings: i.servings });
     g.portions += i.servings;
@@ -46,7 +54,6 @@ export function buildPrepPlan(items, recipes, rules) {
 
   const sunday = { key: 'sun', label: 'Sonntag', day: SESSION_SUN, total: 0, tasks: [] };
   const midweek = { key: 'mid', label: `${DAY_SHORT[mid]}-Abend`, day: mid, total: 0, tasks: [] };
-  const fresh = [];
 
   const useText = (u) => `${DAY_SHORT[u.day]} ${slotLabel(u.slot)}`;
 

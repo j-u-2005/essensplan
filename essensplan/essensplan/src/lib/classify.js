@@ -13,6 +13,8 @@ const NON_MEAL = /(cocktail|longdrink|drink\b|bowle|punsch|glühwein|likör|limo
 const QUIRKY = /(rote bete|rote beete|rotebete|beetroot|pastinake|topinambur|schwarzwurzel|fenchel|mangold|steckrübe|kohlrabi|spirulina|lakritz|wasabi|tamarinde|rosenwasser|erbsensoße|erbsensauce|erbsenpesto|süßkartoffel-?pasta|blaubeer-?(pasta|nudel)|schoko-?(pasta|nudel|curry))/u;
 // Abendessen soll warm sein
 const COLD_DINNER = /(salat|bowl|overnight|bircher|smoothie|müsli|sandwich|belegt|carpaccio|tatar|sushi|rohkost|brotzeit|vesper|dip\b)/u;
+// Süße Gerichte gehören nicht ins Mittag-/Abendessen (herzhaft gewünscht)
+const SWEET_DISH = /(pfannkuchen|pancake|waffel|milchreis|grießbrei|griesbrei|porridge|müsli|granola|crêpe|crepe|schmarrn|germknödel|dampfnudel|süß(?!kartoffel)|schoko|vanille|marmelade|bananenbrot|muffin|kuchen|torte|pudding|beeren|erdbeer|heidelbeer|himbeer|kirsch|french toast|overnight|bircher)/u;
 const DESSERT = /(dessert|nachtisch|kuchen|torte|\beis\b|pudding|mousse|plätzchen|kekse|brownie|cupcake|süßspeise|tiramisu|cheesecake|sorbet|parfait)/u;
 const LUNCH = /(salat|bowl|wrap|sandwich|suppe|eintopf|auflauf|nudel|pasta|reis|curry|quiche|frittata|burrito|linsen|couscous|bulgur|pfanne|lasagne|gratin|tortilla|focaccia|pizza|baguette|bratling|frikadelle|bällchen|laibchen|taschen|strudel|börek|tarte|mittag|dal|chili)/u;
 const SWEET = /(süß|honig|zucker|schoko|beere|banane|apfel|zimt|vanille|ahornsirup|marmelade|kokos|obst|joghurt|quark|milchreis|pancake|waffel|porridge|müsli|granola|crêpe|crepe|grießbrei|griesbrei|bananenbrot|muffin|kuchen|keks|haselnuss|pfirsich|erdbeer|heidelbeer|himbeer|kirsch|bircher|overnight)/u;
@@ -92,7 +94,9 @@ export function classifyRecipe(r) {
   const nonMeal = NON_MEAL.test(title) || QUIRKY.test(title) || QUIRKY.test(ing);
   const dessert = DESSERT.test(text) && !SNACK.test(text);
   const mainish = MAIN.test(title) || MAIN.test(cats);
-  const bf = !nonMeal && (BREAKFAST.test(title) || /frühstück/u.test(cats)) && !mainish;
+  const sweet = SWEET.test(title) && !SAVORY.test(title);
+  // Frühstück ist immer süß
+  const bf = !nonMeal && sweet && (BREAKFAST.test(title) || /frühstück/u.test(cats)) && !mainish;
   const snack = !nonMeal && SNACK.test(title) && !mainish;
   const proteinIng = PROTEINS.some(([, re]) => re.test(ing));
 
@@ -100,10 +104,10 @@ export function classifyRecipe(r) {
   const dtype = pickDtype(text);
   const shelf = estimateShelf(text);
 
-  const sweet = (bf || snack) && SWEET.test(title) && !SAVORY.test(title);
-  const sDinner = !nonMeal && !COLD_DINNER.test(title) && !dessert && !bf && !snack && (mainish || (proteinIng && (r.ingredients || []).length >= 4));
+  const savory = !SWEET_DISH.test(title);
+  const sDinner = savory && !nonMeal && !COLD_DINNER.test(title) && !dessert && !bf && !snack && (mainish || (proteinIng && (r.ingredients || []).length >= 4));
   const sLunch =
-    !nonMeal && !dessert && !bf && !snack && (LUNCH.test(text) || /mittag/u.test(cats) || (sDinner && shelf >= 3));
+    savory && !nonMeal && !dessert && !bf && !snack && (LUNCH.test(text) || /mittag/u.test(cats) || (sDinner && shelf >= 3));
 
   const warmOnly = WARM_ONLY.test(title);
   const coldOk = bf ? !warmOnly : COLD.test(text) && !warmOnly;

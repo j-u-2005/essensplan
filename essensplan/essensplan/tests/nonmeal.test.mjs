@@ -26,3 +26,14 @@ test('Abendessen: warm und nicht zu ausgefallen', () => {
   const ok = classifyRecipe({ title: 'Hähnchen-Curry mit Reis', ingredients: ['400 g Hähnchen', '200 g Reis', '1 Dose Kokosmilch', '2 EL Currypaste'], minutes: 35 });
   assert.equal(ok.s_dinner, 1);
 });
+
+test('Frühstück süß, Mittag/Abend herzhaft', () => {
+  const ing = ['2 Eier', '200 g Mehl', '250 ml Milch', '1 EL Zucker', '1 Prise Salz'];
+  const waffel = classifyRecipe({ title: 'Waffeln mit Beeren', ingredients: ing, minutes: 25 });
+  assert.equal(waffel.s_breakfast, 1);
+  assert.deepEqual([waffel.s_lunch, waffel.s_dinner], [0, 0]);
+  const herz = classifyRecipe({ title: 'Rührei mit Schinken', ingredients: ing, minutes: 10 });
+  assert.equal(herz.s_breakfast, 0);
+  const kartoffel = classifyRecipe({ title: 'Süßkartoffel-Curry mit Reis', ingredients: ['400 g Süßkartoffel', '200 g Reis', '1 Dose Kokosmilch', '2 EL Currypaste'], minutes: 35 });
+  assert.equal(kartoffel.s_dinner, 1);
+});

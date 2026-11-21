@@ -9,13 +9,14 @@ const defaults = normalizeParams(null, rules.defaults);
 const make = (seed, over = {}, pool = makePool()) =>
   generatePlan({ recipes: pool, params: normalizeParams(over, defaults), rules, seed });
 
-test('Struktur: Mo–Fr Frühstück/Mittag/Snack, Mo–Mi HelloFresh, Sa/So nur Abend', () => {
+test('Struktur: jeden Tag Frühstück/Mittag/Abend, kein Snack, Mo–Mi HelloFresh', () => {
   const { items, warnings } = make(1);
   assert.equal(warnings.length, 0);
   const at = (d, s) => items.filter((i) => i.day === d && i.slot === s);
-  for (let d = 0; d < 5; d++) for (const s of ['breakfast', 'lunch', 'snack']) assert.equal(at(d, s).length, 1, `${d} ${s}`);
+  for (let d = 0; d < 7; d++) for (const s of ['breakfast', 'lunch', 'dinner']) assert.equal(at(d, s).length, 1, `${d} ${s}`);
+  for (let d = 0; d < 7; d++) assert.equal(at(d, 'snack').length, 0, `snack ${d}`);
   for (let d = 0; d < 7; d++) assert.equal(at(d, 'firma').length, d === 1 || d === 3 ? 1 : 0, `firma ${d}`);
-  for (let d = 5; d < 7; d++) for (const s of ['breakfast', 'lunch', 'snack', 'firma']) assert.equal(at(d, s).length, 0);
+  for (let d = 5; d < 7; d++) assert.equal(at(d, 'firma').length, 0);
   for (let d = 0; d < 3; d++) {
     assert.equal(at(d, 'dinner')[0].kind, 'placeholder');
     assert.equal(at(d, 'dinner')[0].title, 'HelloFresh');
@@ -59,7 +60,6 @@ test('Portionen: 1 + Extras, Papa-kocht-Tage ohne Extras beim Mittag, Abend nach
   assert.equal(get(1, 'lunch').servings, 1);
   assert.equal(get(3, 'lunch').servings, 1);
   assert.equal(get(2, 'breakfast').servings, 3);
-  assert.equal(get(0, 'snack').servings, 1);
   assert.equal(get(3, 'dinner').servings, 3);
   assert.equal(get(5, 'dinner').servings, 1);
 });
@@ -152,4 +152,14 @@ test('Datumslogik', () => {
   assert.equal(isoWeekNumber('2026-12-28'), 53);
   assert.equal(weekdayIndex('2026-11-23'), 0);
   assert.equal(isValidISO('2026-02-30'), false);
+});
+
+test('Frühstück ist immer süß', () => {
+  const pool = makePool(80, 9);
+  const byId = new Map(pool.map((r) => [r.id, r]));
+  for (let seed = 1; seed <= 30; seed++) {
+    for (const i of make(seed, {}, pool).items) {
+      if (i.slot === 'breakfast' && i.recipe_id) assert.equal(byId.get(i.recipe_id).sweet, 1, `Seed ${seed}`);
+    }
+  }
 });

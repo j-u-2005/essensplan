@@ -153,7 +153,7 @@ function rowHtml(i) {
   return `<div class="row s-${i.slot} ${i.kind}${missing ? ' missing' : ''}" data-id="${i.id}">
     <div class="ico" title="${s.label}">${s.ico}</div>
     <div><div class="t">${title}</div><div class="m">${esc(meta.join(' · '))}</div></div>
-    <div class="btns">${swap}<button data-act="edit" data-id="${i.id}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button></div>
+    <div class="btns">${swap}<button data-act="edit" data-id="${i.id}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button><button data-act="del" data-id="${i.id}" title="Löschen" aria-label="Löschen">🗑️</button></div>
   </div>`;
 }
 
@@ -193,6 +193,16 @@ async function onPlanClick(e) {
     try {
       await api(`/api/items/${id}/swap`, { method: 'POST', body: {} });
       toast('Getauscht');
+      await renderPlan($('#main'));
+    } catch (err) {
+      fail(err);
+      b.disabled = false;
+    }
+  } else if (b.dataset.act === 'del') {
+    b.disabled = true;
+    try {
+      await api(`/api/items/${id}`, { method: 'DELETE' });
+      toast('Gelöscht');
       await renderPlan($('#main'));
     } catch (err) {
       fail(err);
