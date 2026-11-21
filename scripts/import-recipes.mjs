@@ -11,7 +11,7 @@
  *   DRY_RUN=1           nichts in die Datenbank schreiben
  *   SOURCES_FILE        alternative Quellen-Konfiguration (für Tests)
  */
-import { readFile, appendFile } from 'node:fs/promises';
+import { readFile, appendFile, access } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import { d1, d1Batch, d1Configured } from './d1.mjs';
 import { parseRobots, isAllowed, crawlDelay } from '../src/lib/robots.js';
@@ -218,12 +218,25 @@ async function importSource(source) {
   console.log(`  Ergebnis: ${stats.recipes} Rezepte (${stats.blocked} gesperrt), ${stats.nojson} ohne JSON-LD, ${stats.errors} Fehler`);
 }
 
+async function loadCurated() {
+  // Von Hand geprüfte Zuordnung: { recipes: { "<url>": "B" | "L" | "D" | "F" kombinierbar | "X" } }
+  const file = new URL('../config/curated.json', import.meta.url);
+  try {
+    await access(file);
+  } catch {
+    return {};
+  }
+  return JSON.parse(await readFile(file, 'utf8')).recipes || {};
+}
+
 async function reblock() {
+  const curated = await loadCurated();
+  console.log(`Geprüfte Rezepte in config/curated.json: ${Object.keys(curated).length}`);
   let offset = 0;
   let changed = 0;
   let slotChanges = 0;
   for (;;) {
-    const rows = await d1('SELECT id, title, minutes, ingredients, raw_ctx, blocked, blocked_reason, s_lunch, s_dinner, s_snack, s_breakfast, s_firma FROM recipes ORDER BY id LIMIT 500 OFFSET ?', [offset]);
+    const rows = await d1('SELECT id, url, title, minutes, ingredients, raw_ctx, blocked, blocked_reason, s_lunch, s_dinner, s_snack, s_breakfast, s_firma FROM recipes ORDER BY id LIMIT 500 OFFSET ?', [offset]);
     if (!rows.length) break;
     const updates = [];
     for (const r of rows) {
@@ -242,6 +255,14 @@ async function reblock() {
         s_snack: r.s_snack && c.s_snack ? 1 : 0,
         s_firma: r.s_firma && c.s_firma ? 1 : 0,
       };
+      const code = curated[r.url];
+      if (code) {
+        // Handprüfung hat Vorrang vor den Regeln
+        next.s_breakfast = code.includes('B') ? 1 : 0;
+        next.s_lunch = code.includes('L') ? 1 : 0;
+        next.s_dinner = code.includes('D') ? 1 : 0;
+        next.s_firma = code.includes('F') ? 1 : 0;
+      }
       const rowChanged = Object.keys(next).some((k) => next[k] !== r[k]);
       if (rowChanged) {
         updates.push({
