@@ -16,6 +16,7 @@ on:
           - plan
           - reblock
           - pdf
+          - export
       week:
         description: 'Montag der Zielwoche (YYYY-MM-DD), leer = automatisch'
         required: false
@@ -65,20 +66,24 @@ jobs:
         run: node scripts/import-recipes.mjs
 
       - name: Rezepte importieren
-        if: ${{ inputs.step != 'plan' && inputs.step != 'reblock' && inputs.step != 'pdf' }}
+        if: ${{ inputs.step != 'plan' && inputs.step != 'reblock' && inputs.step != 'pdf' && inputs.step != 'export' }}
         env:
           IMPORT_LIMIT: ${{ inputs.import_limit || '60' }}
         run: node scripts/import-recipes.mjs
 
       - name: Plan erzeugen
-        if: ${{ inputs.step != 'import' && inputs.step != 'reblock' && inputs.step != 'pdf' }}
+        if: ${{ inputs.step != 'import' && inputs.step != 'reblock' && inputs.step != 'pdf' && inputs.step != 'export' }}
         env:
           WEEK_START: ${{ inputs.week }}
           FORCE: ${{ inputs.force == 'true' && '1' || '' }}
         run: node scripts/generate-plan.mjs
 
+      - name: Rezepte exportieren
+        if: ${{ inputs.step == 'export' }}
+        run: node scripts/export-recipes.mjs
+
       - name: PDF erzeugen und per Mail senden
-        if: ${{ inputs.step != 'import' && inputs.step != 'reblock' }}
+        if: ${{ inputs.step != 'import' && inputs.step != 'reblock' && inputs.step != 'export' }}
         env:
           WEEK: ${{ inputs.week }}
           SEND_ALWAYS: ${{ inputs.step == 'pdf' && '1' || '' }}
@@ -91,3 +96,11 @@ jobs:
           name: essensplan-pdf
           path: out/*.pdf
           retention-days: 14
+
+      - name: Rezept-Export als Download bereitstellen
+        if: ${{ hashFiles('out/recipes-export.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rezepte-export
+          path: out/recipes-export.json
+          retention-days: 7
