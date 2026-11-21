@@ -101,3 +101,12 @@ npm install
 npm test            # 24 Tests (Sperrliste, Parser, Generator, Einkauf, Datum)
 npx wrangler dev    # lokal; .dev.vars mit APP_PASSWORD und SESSION_SECRET anlegen
 ```
+
+## Neu in Version 2
+
+- **Firma-Gerichte**: An Tagen mit „Papa kocht“ (Standard: Di und Do) bekommt die Firma ein eigenes vorkochbares Gericht (Suppe, Reis, Auflauf, Pasta, Pfanne, Kartoffel), das dort nur noch aufgewärmt wird. Die Portionen entsprechen den Extra-Personen.
+- **Vorbereitung**: Tab „Vorbereitung“ mit zwei Sessions – Sonntag (Ziel höchstens 2 h) und Mittwochabend (Ziel höchstens 1 h). Gerichte, die bis Freitag nicht haltbar wären, kommen in die Mittwochs-Session; schnell verderbliche werden frisch zubereitet. Überschreitungen erscheinen als Warnung.
+- **Einkaufsliste mit Zeitpunkt**: Jede Zutat zeigt, wann sie gebraucht wird (z. B. „So Vorbereitung“, „Do Abend kochen“).
+- **PDF**: Button „PDF / Drucken“ in der App (Druckdialog → „Als PDF speichern“). Jeden Freitag erzeugt GitHub Actions zusätzlich ein PDF (Plan, Vorbereitung, Einkaufsliste), hängt es als Artefakt an den Lauf und schickt es per Mail, wenn die Secrets `RESEND_API_KEY` und `MAIL_TO` (optional `MAIL_FROM`) gesetzt sind. Ohne Domain kann der Resend-Testabsender nur an die eigene Konto-Adresse senden.
+- **Datenbank-Migration**: Einmalig `migrations/0002_firma.sql` in der D1-Konsole ausführen.
+- Manuell auslösen: Actions → Wochenplan → Run workflow → `step = pdf`.

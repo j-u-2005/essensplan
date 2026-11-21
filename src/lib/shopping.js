@@ -40,9 +40,10 @@ function displayAmount(amount, unit) {
 }
 
 /**
- * entries: [{ ingredients: [{a,u,n}], servings: Rezept-Portionen, factor: Summe der benötigten Portionen }]
+ * entries: [{ ingredients: [{a,u,n}], servings: Rezept-Portionen, factor: Summe der benötigten Portionen,
+ *             labels?: [{ text, rank }] (wann die Zutat gebraucht wird) }]
  * factor ist bereits "Portionen gesamt" (inkl. Mittags-Faktor); Skalierung = factor / servings
- * → { groups: [{ category, items: [{ name, text }] }], pantry: [{ name, text }] }
+ * → { groups: [{ category, items: [{ name, text, when: string[], rank }] }], pantry: [...] }
  */
 export function buildShopping(entries, rules) {
   const pantryRe = new RegExp(rules.pantry, 'iu');
@@ -55,10 +56,11 @@ export function buildShopping(entries, rules) {
       const key = `${normalizeKey(ing.n)}|${ing.u || ''}`;
       let slot = map.get(key);
       if (!slot) {
-        slot = { name: ing.n, unit: ing.u, amount: null, count: 0 };
+        slot = { name: ing.n, unit: ing.u, amount: null, count: 0, labels: new Map() };
         map.set(key, slot);
       }
       slot.count += 1;
+      for (const l of e.labels || []) if (!slot.labels.has(l.text) || slot.labels.get(l.text) > l.rank) slot.labels.set(l.text, l.rank);
       if (ing.a !== null && ing.a !== undefined) slot.amount = (slot.amount ?? 0) + ing.a * scale;
     }
   }
@@ -68,7 +70,8 @@ export function buildShopping(entries, rules) {
   for (const slot of map.values()) {
     const amount = slot.amount === null ? null : roundAmount(slot.amount, slot.unit);
     const text = amount === null ? slot.name : `${displayAmount(amount, slot.unit)} ${slot.name}`;
-    const item = { name: slot.name, text };
+    const sorted = [...slot.labels.entries()].sort((a, b) => a[1] - b[1]);
+    const item = { name: slot.name, text, when: sorted.map(([t]) => t), rank: sorted.length ? sorted[0][1] : 999 };
     if (pantryRe.test(slot.name.toLowerCase().trim())) {
       pantry.push(item);
       continue;

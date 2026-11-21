@@ -1,6 +1,6 @@
 import rules from '../config/rules.json' with { type: 'json' };
 import { rankCandidates, normalizeParams, SLOTS, SLOT_ORDER } from './lib/generator.js';
-import { buildShopping } from './lib/shopping.js';
+import { assembleWeek } from './lib/weekdata.js';
 import { isValidISO, weekdayIndex, planningWeek } from './lib/dates.js';
 
 const enc = new TextEncoder();
@@ -44,8 +44,8 @@ async function isAuthed(request, env) {
 
 // ---------- Hilfsfunktionen ----------
 
-const RECIPE_COLS = `id, title, url, image, source, minutes, effort, s_breakfast, s_lunch, s_snack, s_dinner,
-  cold_ok, micro_ok, shelf_days, batch_ok, sweet, oats, fructose, cost, protein, dtype, leftover_ok, rating, blocked`;
+const RECIPE_COLS = `id, title, url, image, source, minutes, effort, s_breakfast, s_lunch, s_firma, s_snack, s_dinner,
+  cold_ok, micro_ok, shelf_days, batch_ok, sweet, oats, fructose, cost, protein, dtype, leftover_ok, s_firma, rating, blocked`;
 
 async function getSetting(env, key) {
   const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first();
@@ -130,6 +130,52 @@ const candidateView = (r) => ({
   id: r.id, title: r.title, url: r.url, image: r.image, source: r.source, minutes: r.minutes, cold_ok: r.cold_ok,
 });
 
+// ---------- Woche laden / Firma-Einträge ergänzen ----------
+
+async function loadWeek(env, week) {
+  const items = (
+    await env.DB.prepare('SELECT id, day, slot, kind, recipe_id, servings, leftover FROM plan_items WHERE week_start = ?').bind(week).all()
+  ).results;
+  const recipes = (
+    await env.DB.prepare(
+      `SELECT id, title, url, effort, shelf_days, servings, ingredients FROM recipes
+        WHERE id IN (SELECT recipe_id FROM plan_items WHERE week_start = ? AND recipe_id IS NOT NULL)`,
+    ).bind(week).all()
+  ).results;
+  return { items, recipes };
+}
+
+/**
+ * Für jeden Tag, an dem Papa in der Firma kocht, fehlt ggf. noch ein vorkochbares Gericht.
+ * Ergänzt fehlende Firma-Einträge, ohne den restlichen Plan anzufassen, und setzt die
+ * Mittags-Portionen an diesen Tagen auf 1 (die Firma bekommt ihr eigenes Gericht).
+ */
+async function ensureFirma(env, week) {
+  const plan = await env.DB.prepare('SELECT week_start FROM plans WHERE week_start = ?').bind(week).first();
+  if (!plan) return { added: 0, missing: 0 };
+  const { params } = await getParams(env, week);
+  const existing = (await env.DB.prepare("SELECT id, day FROM plan_items WHERE week_start = ? AND slot = 'firma'").bind(week).all()).results;
+  const have = new Set(existing.map((e) => e.day));
+  let added = 0;
+  let missing = 0;
+
+  for (let d = 0; d < 5; d++) {
+    if (!params.dad_cooks[d]) continue;
+    await env.DB.prepare("UPDATE plan_items SET servings = 1 WHERE week_start = ? AND day = ? AND slot = 'lunch' AND leftover = 0 AND kind = 'recipe'").bind(week, d).run();
+    if (have.has(d) || params.lunch_extras[d] < 1) continue;
+    const cands = await candidatesFor(env, { id: 0, week_start: week, day: d, slot: 'firma' }, 5);
+    if (!cands.length) {
+      missing++;
+      continue;
+    }
+    const pick = cands[Math.floor(Math.random() * cands.length)];
+    await env.DB.prepare("INSERT INTO plan_items (week_start, day, slot, kind, recipe_id, title, servings, note, leftover) VALUES (?,?,'firma','recipe',?,NULL,?,?,0)")
+      .bind(week, d, pick.id, params.lunch_extras[d], 'Vorkochen, in der Firma nur aufwärmen').run();
+    added++;
+  }
+  return { added, missing };
+}
+
 // ---------- API ----------
 
 async function handleApi(request, env, url) {
@@ -168,31 +214,28 @@ async function handleApi(request, env, url) {
     const items = (
       await env.DB.prepare(
         `${ITEM_SELECT} WHERE i.week_start = ?
-         ORDER BY i.day, CASE i.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'snack' THEN 2 ELSE 3 END, i.id`,
+         ORDER BY i.day, CASE i.slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'firma' THEN 2 WHEN 'snack' THEN 3 ELSE 4 END, i.id`,
       ).bind(week).all()
     ).results;
     const { params, saved } = await getParams(env, week);
     return json({ week_start: week, exists: Boolean(plan), created_at: plan?.created_at ?? null, params, params_saved: saved, items });
   }
 
-  if (path === '/api/shopping' && method === 'GET') {
+  if ((path === '/api/shopping' || path === '/api/prep' || path === '/api/bundle') && method === 'GET') {
     const week = url.searchParams.get('week');
     if (!validWeek(week)) return fail(400, 'Ungültige Woche.');
-    const rows = (
-      await env.DB.prepare(
-        `SELECT i.slot, i.servings, r.id AS rid, r.servings AS rservings, r.ingredients
-           FROM plan_items i JOIN recipes r ON r.id = i.recipe_id WHERE i.week_start = ? AND i.kind = 'recipe'`,
-      ).bind(week).all()
-    ).results;
-    const byRecipe = new Map();
-    for (const r of rows) {
-      const f = r.servings * (r.slot === 'dinner' ? 1 : rules.lunch_portion_factor);
-      const e = byRecipe.get(r.rid);
-      if (e) e.factor += f;
-      else byRecipe.set(r.rid, { servings: r.rservings, factor: f, raw: r.ingredients });
-    }
-    const entries = [...byRecipe.values()].map((e) => ({ servings: e.servings, factor: e.factor, ingredients: JSON.parse(e.raw) }));
-    return json(buildShopping(entries, rules));
+    const { items, recipes } = await loadWeek(env, week);
+    const { prep, shopping } = assembleWeek(items, recipes, rules);
+    if (path === '/api/shopping') return json(shopping);
+    if (path === '/api/prep') return json(prep);
+    const view = (await env.DB.prepare(`${ITEM_SELECT} WHERE i.week_start = ? ORDER BY i.day, i.id`).bind(week).all()).results;
+    return json({ week_start: week, items: view, prep, shopping });
+  }
+
+  if (path === '/api/firma/ensure' && method === 'POST') {
+    const b = await readBody(request);
+    if (!validWeek(b.week_start)) return fail(400, 'Ungültige Woche.');
+    return json(await ensureFirma(env, b.week_start));
   }
 
   let m;
@@ -312,7 +355,8 @@ async function handleApi(request, env, url) {
     await env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
       .bind(`params:${b.week_start}`, JSON.stringify(params)).run();
     await env.DB.prepare('UPDATE plans SET params = ? WHERE week_start = ?').bind(JSON.stringify(params), b.week_start).run();
-    return json({ params });
+    const firma = await ensureFirma(env, b.week_start);
+    return json({ params, firma });
   }
   if (path === '/api/defaults' && method === 'PUT') {
     const b = await readBody(request);

@@ -21,17 +21,143 @@
     "over_budget": 3
   },
   "blocks": {
-    "breakfast": [[1, 1, 1, 1, 1], [2, 1, 1, 1], [2, 2, 1], [1, 1, 1, 1, 1]],
-    "lunch": [[2, 2, 1], [3, 2], [2, 3], [2, 2, 1]],
-    "snack": [[1, 1, 1, 1, 1], [2, 2, 1], [1, 2, 2], [3, 2]]
+    "breakfast": [
+      [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        2,
+        1,
+        1,
+        1
+      ],
+      [
+        2,
+        2,
+        1
+      ],
+      [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    ],
+    "lunch": [
+      [
+        2,
+        2,
+        1
+      ],
+      [
+        3,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        2,
+        2,
+        1
+      ]
+    ],
+    "snack": [
+      [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        2,
+        2,
+        1
+      ],
+      [
+        1,
+        2,
+        2
+      ],
+      [
+        3,
+        2
+      ]
+    ],
+    "firma": [
+      [
+        1,
+        1
+      ]
+    ]
   },
   "defaults": {
-    "breakfast_extras": [2, 2, 2, 2, 2, 0, 0],
-    "lunch_extras": [2, 2, 2, 2, 2, 0, 0],
-    "dad_cooks": [false, false, false, false, false, false, false],
-    "brother": [false, false, false, false, false, false, false],
-    "dinner_persons": [1, 1, 1, 2, 2, 2, 2],
-    "hellofresh": [true, true, true, false, false, false, false]
+    "breakfast_extras": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0
+    ],
+    "lunch_extras": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0
+    ],
+    "dad_cooks": [
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false
+    ],
+    "brother": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "dinner_persons": [
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2
+    ],
+    "hellofresh": [
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
   },
-  "pantry": "^(salz|pfeffer|wasser|speiseöl|öl|olivenöl|rapsöl|sonnenblumenöl|pflanzenöl|salz und pfeffer|pfeffer und salz|eiswürfel|zucker)( |$)"
+  "pantry": "^(salz|pfeffer|wasser|speiseöl|öl|olivenöl|rapsöl|sonnenblumenöl|pflanzenöl|salz und pfeffer|pfeffer und salz|eiswürfel|zucker)( |$)",
+  "prep": {
+    "sunday_max_minutes": 120,
+    "midweek_max_minutes": 60,
+    "midweek_day": 2
+  }
 }

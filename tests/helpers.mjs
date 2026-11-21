@@ -23,7 +23,7 @@ export function makePool(perSlot = 60, seed = 7) {
       source: pick(SOURCES),
       minutes: slot === 'dinner' ? 15 + Math.floor(rng() * 40) : 10 + Math.floor(rng() * 25),
       effort: 5 + Math.floor(rng() * 30),
-      s_breakfast: 0, s_lunch: 0, s_snack: 0, s_dinner: 0,
+      s_breakfast: 0, s_lunch: 0, s_firma: 0, s_snack: 0, s_dinner: 0,
       cold_ok: rng() < 0.55 ? 1 : 0,
       micro_ok: 1,
       shelf_days: shelf,
@@ -43,6 +43,11 @@ export function makePool(perSlot = 60, seed = 7) {
     for (let i = 0; i < perSlot; i++) {
       const r = base(slot);
       r['s_' + slot] = 1;
+      if (slot === 'lunch' && rng() < 0.5) {
+        r.s_firma = 1;
+        r.shelf_days = Math.max(r.shelf_days, 3);
+        r.dtype = pick(['suppe', 'reis', 'auflauf', 'pasta', 'pfanne']);
+      }
       if (slot === 'dinner' && rng() < 0.4) r.s_lunch = 1;
       recipes.push(r);
     }

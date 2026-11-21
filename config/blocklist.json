@@ -119,5 +119,18 @@
     "label": "Roher Apfelsaft",
     "mode": "raw",
     "pattern": "apfelsaft|apfelschorle|naturtrüber apfel"
+  },
+  {
+    "id": "spargel",
+    "label": "Spargel",
+    "mode": "always",
+    "pattern": "spargel"
+  },
+  {
+    "id": "zwiebel-hauptzutat",
+    "label": "Zwiebel als Hauptzutat",
+    "mode": "title",
+    "pattern": "zwiebel",
+    "titlePattern": "zwiebel|schalotte"
   }
 ]

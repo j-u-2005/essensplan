@@ -7,7 +7,7 @@
  *   SEED        feste Zufallszahl (Standard: neu gewürfelt)
  *   NTFY_TOPIC  optional: Push-Benachrichtigung über ntfy.sh
  */
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { d1, d1Batch } from './d1.mjs';
 import { generatePlan, normalizeParams } from '../src/lib/generator.js';
 import { planningWeek, addDays, isValidISO, mondayOf, isoWeekNumber, formatShort } from '../src/lib/dates.js';
@@ -38,7 +38,7 @@ const recipes = [];
 for (let offset = 0; ; offset += 2000) {
   const rows = await d1(
     `SELECT id, title, source, minutes, effort, s_breakfast, s_lunch, s_snack, s_dinner, cold_ok, micro_ok,
-            shelf_days, batch_ok, sweet, oats, fructose, cost, protein, dtype, leftover_ok, rating, blocked
+            shelf_days, batch_ok, sweet, oats, fructose, cost, protein, dtype, leftover_ok, s_firma, rating, blocked
        FROM recipes WHERE blocked = 0 AND rating >= 0 ORDER BY id LIMIT 2000 OFFSET ?`,
     [offset],
   );
@@ -68,6 +68,7 @@ const statements = [
   })),
 ];
 await d1Batch(statements);
+await writeFile('plan-created.flag', week);
 
 console.log(`Plan gespeichert: ${items.length} Einträge, Seed ${seed}, Haferbrei/Oats ${stats.oats}×, Vorbereitungsaufwand ca. ${stats.effort} min.`);
 warnings.forEach((w) => console.warn('Warnung: ' + w));

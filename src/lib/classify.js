@@ -6,8 +6,16 @@ const low = (s) => String(s || '').toLowerCase();
 
 const MAIN = /(fleisch|hack|hähnchen|hühnchen|huhn|pute|nudel|pasta|spaghetti|reis|suppe|eintopf|curry|auflauf|steak|schnitzel|lasagne|burger|pizza|gulasch|braten|gratin|pfanne|risotto|quiche|ofengemüse|kartoffel|gnocchi|burrito|wrap|bowl|chili|bolognese|frikadelle|bratwurst|püree|tortilla|dal|linsen)/u;
 const BREAKFAST = /(frühstück|müsli|porridge|overnight|oats|haferflocken|pancake|pfannkuchen|waffel|french toast|granola|chia|bircher|crêpe|crepe|milchreis|grießbrei|griesbrei|aufstrich|bananenbrot|marmelade|brötchen|toast|joghurt|quark|smoothie)/u;
-const SNACK = /(riegel|energy|kugeln|cookie|keks|muffin|cracker|chips|snack|popcorn|trail|dip|smoothie|obstsalat|fruchtsalat|bananenbrot|brownie|bliss|ballchen|energyball|protein ?ball)/u;
-const DESSERT = /(dessert|nachtisch|kuchen|torte|eis\b|pudding|mousse|plätzchen|kekse|brownie|cupcake|süßspeise|tiramisu|cheesecake|sorbet|parfait)/u;
+const SNACK = /(riegel|energy|kugeln|cookie|keks|muffin|cracker|chips|snack|popcorn|trail|smoothie|obstsalat|fruchtsalat|bananenbrot|brownie|bliss|ballchen|energyball|protein ?ball)/u;
+// Getränke, Saucen, Dips, Dressings & Co. sind keine Mahlzeiten und gehören in keinen Slot
+const NON_MEAL = /(cocktail|longdrink|drink\b|bowle|punsch|glühwein|likör|limonade|getränk|mocktail|spritz|sangria|eistee|tee\b|kaffee|latte|sirup|shot\b|dip\b|dip$|-dip|dips\b|dressing|vinaigrette|sauce|soße|marinade|pesto|gewürzmischung|brühe|fond\b|chutney|mayonnaise|ketchup|aioli|hummus|guacamole|salsa|aufstrich|butter\b|würzöl|likör)/u;
+// Zu ausgefallen für den Alltag (Fabian: "rote Bete Fussili mit Erbsensoße? wth?") – keine Zuordnung
+const QUIRKY = /(rote bete|rote beete|rotebete|beetroot|pastinake|topinambur|schwarzwurzel|fenchel|mangold|steckrübe|kohlrabi|spirulina|lakritz|wasabi|tamarinde|rosenwasser|erbsensoße|erbsensauce|erbsenpesto|süßkartoffel-?pasta|blaubeer-?(pasta|nudel)|schoko-?(pasta|nudel|curry))/u;
+// Abendessen soll warm sein
+const COLD_DINNER = /(salat|bowl|overnight|bircher|smoothie|müsli|sandwich|belegt|carpaccio|tatar|sushi|rohkost|brotzeit|vesper|dip\b)/u;
+// Süße Gerichte gehören nicht ins Mittag-/Abendessen (herzhaft gewünscht)
+const SWEET_DISH = /(pfannkuchen|pancake|waffel|milchreis|grießbrei|griesbrei|porridge|müsli|granola|crêpe|crepe|schmarrn|germknödel|dampfnudel|süß(?!kartoffel)|schoko|vanille|marmelade|bananenbrot|muffin|kuchen|torte|pudding|beeren|erdbeer|heidelbeer|himbeer|kirsch|french toast|overnight|bircher)/u;
+const DESSERT = /(dessert|nachtisch|kuchen|torte|\beis\b|pudding|mousse|plätzchen|kekse|brownie|cupcake|süßspeise|tiramisu|cheesecake|sorbet|parfait)/u;
 const LUNCH = /(salat|bowl|wrap|sandwich|suppe|eintopf|auflauf|nudel|pasta|reis|curry|quiche|frittata|burrito|linsen|couscous|bulgur|pfanne|lasagne|gratin|tortilla|focaccia|pizza|baguette|bratling|frikadelle|bällchen|laibchen|taschen|strudel|börek|tarte|mittag|dal|chili)/u;
 const SWEET = /(süß|honig|zucker|schoko|beere|banane|apfel|zimt|vanille|ahornsirup|marmelade|kokos|obst|joghurt|quark|milchreis|pancake|waffel|porridge|müsli|granola|crêpe|crepe|grießbrei|griesbrei|bananenbrot|muffin|kuchen|keks|haselnuss|pfirsich|erdbeer|heidelbeer|himbeer|kirsch|bircher|overnight)/u;
 const SAVORY = /(rührei|käse|schinken|wurst|speck|avocado|gemüse|herzhaft|hack|ei\b)/u;
@@ -18,6 +26,9 @@ const NO_MICRO = /(soufflé|spiegelei|omelett|knusprig|frittiert|schnitzel|pomme
 const OATS = /(hafer|oat|porridge|overnight|bircher|granola|müsli)/u;
 const FRUCTOSE = /(honig|agave|apfelsaft|apfel(?!saft)|äpfel|birne|trockenfrüchte|rosine|dattel|traube|süßkirsche|mango|wassermelone|zwetschge|pflaume|obstsaft|apfelmus|ahornsirup|sirup)/u;
 const EXPENSIVE = /(rind|lamm|steak|entrecôte|filet|garnele|lachs|ente\b|wild|kalb|serrano|prosciutto|parmaschinken|pinienkerne|avocado|cashew|mandel|nüsse)/gu;
+
+// Gerichte, die man vorkocht und in der Firma nur noch aufwärmt (ca. 5 Minuten)
+const FIRMA_TYPES = ['suppe', 'reis', 'auflauf', 'pasta', 'pfanne', 'kartoffel'];
 
 const PROTEINS = [
   ['huhn', /(hähnchen|hühnchen|huhn|pute|geflügel|chicken)/u],
@@ -80,20 +91,23 @@ export function classifyRecipe(r) {
   const ing = low((r.ingredients || []).join(' | '));
   const minutes = r.minutes && r.minutes > 0 ? Math.min(r.minutes, 1440) : 45;
 
+  const nonMeal = NON_MEAL.test(title) || QUIRKY.test(title) || QUIRKY.test(ing);
   const dessert = DESSERT.test(text) && !SNACK.test(text);
   const mainish = MAIN.test(title) || MAIN.test(cats);
-  const bf = (BREAKFAST.test(title) || /frühstück/u.test(cats)) && !mainish;
-  const snack = SNACK.test(title) && !mainish;
+  const sweet = SWEET.test(title) && !SAVORY.test(title);
+  // Frühstück ist immer süß
+  const bf = !nonMeal && sweet && (BREAKFAST.test(title) || /frühstück/u.test(cats)) && !mainish;
+  const snack = !nonMeal && SNACK.test(title) && !mainish;
   const proteinIng = PROTEINS.some(([, re]) => re.test(ing));
 
   const protein = pickProtein(`${title} ${ing}`);
   const dtype = pickDtype(text);
   const shelf = estimateShelf(text);
 
-  const sweet = (bf || snack) && SWEET.test(title) && !SAVORY.test(title);
-  const sDinner = !dessert && !bf && !snack && (mainish || proteinIng || (r.ingredients || []).length >= 6);
+  const savory = !SWEET_DISH.test(title);
+  const sDinner = savory && !nonMeal && !COLD_DINNER.test(title) && !dessert && !bf && !snack && (mainish || (proteinIng && (r.ingredients || []).length >= 4));
   const sLunch =
-    !dessert && !bf && !snack && (LUNCH.test(text) || /mittag/u.test(cats) || (sDinner && shelf >= 3));
+    savory && !nonMeal && !dessert && !bf && !snack && (LUNCH.test(text) || /mittag/u.test(cats) || (sDinner && shelf >= 3));
 
   const warmOnly = WARM_ONLY.test(title);
   const coldOk = bf ? !warmOnly : COLD.test(text) && !warmOnly;
@@ -123,5 +137,6 @@ export function classifyRecipe(r) {
     protein,
     dtype,
     leftover_ok: shelf >= 3 && microOk ? 1 : 0,
+    s_firma: (sLunch || sDinner) && microOk && shelf >= 3 && FIRMA_TYPES.includes(dtype) ? 1 : 0,
   };
 }

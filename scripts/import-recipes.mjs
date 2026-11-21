@@ -114,12 +114,12 @@ function recipeStatements(source, url, rec) {
       {
         sql: `INSERT OR IGNORE INTO recipes (url, source, title, image, servings, minutes, effort, ingredients,
           s_breakfast, s_lunch, s_snack, s_dinner, cold_ok, micro_ok, shelf_days, batch_ok, sweet, oats, fructose,
-          cost, protein, dtype, leftover_ok, raw_ctx, blocked, blocked_reason, imported_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          cost, protein, dtype, leftover_ok, s_firma, raw_ctx, blocked, blocked_reason, imported_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         params: [
           url, source.id, rec.title, rec.image, rec.servings ?? 4, cls.minutes, cls.effort, JSON.stringify(parsed),
           cls.s_breakfast, cls.s_lunch, cls.s_snack, cls.s_dinner, cls.cold_ok, cls.micro_ok, cls.shelf_days, cls.batch_ok,
-          cls.sweet, cls.oats, cls.fructose, cls.cost, cls.protein, cls.dtype, cls.leftover_ok, ctxRaw ? 1 : 0,
+          cls.sweet, cls.oats, cls.fructose, cls.cost, cls.protein, cls.dtype, cls.leftover_ok, cls.s_firma, ctxRaw ? 1 : 0,
           verdict.blocked ? 1 : 0, verdict.blocked ? verdict.reasons.join(', ') : null, now,
         ],
       },
@@ -221,8 +221,9 @@ async function importSource(source) {
 async function reblock() {
   let offset = 0;
   let changed = 0;
+  let slotChanges = 0;
   for (;;) {
-    const rows = await d1('SELECT id, title, ingredients, raw_ctx, blocked, blocked_reason FROM recipes ORDER BY id LIMIT 500 OFFSET ?', [offset]);
+    const rows = await d1('SELECT id, title, minutes, ingredients, raw_ctx, blocked, blocked_reason, s_lunch, s_dinner, s_snack, s_breakfast, s_firma FROM recipes ORDER BY id LIMIT 500 OFFSET ?', [offset]);
     if (!rows.length) break;
     const updates = [];
     for (const r of rows) {
@@ -232,12 +233,29 @@ async function reblock() {
       if (Boolean(r.blocked) !== verdict.blocked || (r.blocked_reason ?? null) !== reason) {
         updates.push({ sql: 'UPDATE recipes SET blocked = ?, blocked_reason = ? WHERE id = ?', params: [verdict.blocked ? 1 : 0, reason, r.id] });
       }
+      // Mahlzeiten-Zuordnung nur verschärfen (Getränke, Dips, Saucen raus), nie erweitern
+      const c = classifyRecipe({ title: r.title, ingredients: lines, minutes: r.minutes });
+      const next = {
+        s_breakfast: r.s_breakfast && c.s_breakfast ? 1 : 0,
+        s_lunch: r.s_lunch && c.s_lunch ? 1 : 0,
+        s_dinner: r.s_dinner && c.s_dinner ? 1 : 0,
+        s_snack: r.s_snack && c.s_snack ? 1 : 0,
+        s_firma: r.s_firma && c.s_firma ? 1 : 0,
+      };
+      const rowChanged = Object.keys(next).some((k) => next[k] !== r[k]);
+      if (rowChanged) {
+        updates.push({
+          sql: 'UPDATE recipes SET s_breakfast = ?, s_lunch = ?, s_dinner = ?, s_snack = ?, s_firma = ? WHERE id = ?',
+          params: [next.s_breakfast, next.s_lunch, next.s_dinner, next.s_snack, next.s_firma, r.id],
+        });
+        slotChanges++;
+      }
     }
     changed += updates.length;
     if (updates.length && !DRY) await d1Batch(updates);
     offset += rows.length;
   }
-  console.log(`Sperrliste neu angewendet: ${changed} Rezepte geändert.`);
+  console.log(`Sperrliste neu angewendet: ${changed} Änderungen, davon ${slotChanges} Mahlzeiten-Zuordnungen verschärft.`);
 }
 
 if (process.env.REBLOCK === '1') {

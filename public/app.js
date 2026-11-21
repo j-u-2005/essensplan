@@ -2,6 +2,7 @@ const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samsta
 const SLOT = {
   breakfast: { ico: '🥣', label: 'Frühstück' },
   lunch: { ico: '🍱', label: 'Mittag' },
+  firma: { ico: '🏢', label: 'Firma (Papa)' },
   snack: { ico: '🍎', label: 'Snack' },
   dinner: { ico: '🍽️', label: 'Abend' },
 };
@@ -88,7 +89,7 @@ function shell() {
         <button class="iconbtn" id="next" aria-label="Nächste Woche">›</button>
       </div>
       <nav class="tabs" role="tablist">
-        ${[['plan', 'Plan'], ['shop', 'Einkauf'], ['week', 'Woche']]
+        ${[['plan', 'Plan'], ['prep', 'Vorbereitung'], ['shop', 'Einkauf'], ['week', 'Woche']]
           .map(([id, l]) => `<button role="tab" data-view="${id}" aria-selected="${state.view === id}">${l}</button>`).join('')}
       </nav>
     </header>
@@ -111,6 +112,7 @@ async function render() {
   main.innerHTML = '<p class="empty">Lade …</p>';
   try {
     if (state.view === 'plan') await renderPlan(main);
+    else if (state.view === 'prep') await renderPrep(main);
     else if (state.view === 'shop') await renderShop(main);
     else await renderWeek(main);
   } catch (e) {
@@ -148,10 +150,10 @@ function rowHtml(i) {
     ? `<a href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">${esc(itemTitle(i))}</a>`
     : esc(itemTitle(i));
   const swap = i.kind !== 'placeholder' && i.kind !== 'skip' ? `<button data-act="swap" data-id="${i.id}" title="Zufällig tauschen" aria-label="Tauschen">🔄</button>` : '';
-  return `<div class="row ${i.kind}${missing ? ' missing' : ''}" data-id="${i.id}">
+  return `<div class="row s-${i.slot} ${i.kind}${missing ? ' missing' : ''}" data-id="${i.id}">
     <div class="ico" title="${s.label}">${s.ico}</div>
     <div><div class="t">${title}</div><div class="m">${esc(meta.join(' · '))}</div></div>
-    <div class="btns">${swap}<button data-act="edit" data-id="${i.id}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button></div>
+    <div class="btns">${swap}<button data-act="edit" data-id="${i.id}" title="Bearbeiten" aria-label="Bearbeiten">✏️</button><button data-act="del" data-id="${i.id}" title="Löschen" aria-label="Löschen">🗑️</button></div>
   </div>`;
 }
 
@@ -176,8 +178,9 @@ async function renderPlan(main) {
         ${items.length ? items.map(rowHtml).join('') : '<div class="row"><div></div><div class="m">Nichts geplant</div><div></div></div>'}
       </section>`;
     })
-    .join('') + `<p class="hint">Erzeugt am ${new Date(plan.created_at).toLocaleString('de-DE')}. <button class="ghost" id="regen">Woche neu erzeugen</button></p>`;
+    .join('') + `<p class="hint">Erzeugt am ${new Date(plan.created_at).toLocaleString('de-DE')}. <button class="ghost" id="regen">Woche neu erzeugen</button> <button class="primary" id="pdf">PDF / Drucken</button></p>`;
   $('#regen').onclick = regenerate;
+  $('#pdf').onclick = openPdf;
   main.onclick = onPlanClick;
 }
 
@@ -190,6 +193,16 @@ async function onPlanClick(e) {
     try {
       await api(`/api/items/${id}/swap`, { method: 'POST', body: {} });
       toast('Getauscht');
+      await renderPlan($('#main'));
+    } catch (err) {
+      fail(err);
+      b.disabled = false;
+    }
+  } else if (b.dataset.act === 'del') {
+    b.disabled = true;
+    try {
+      await api(`/api/items/${id}`, { method: 'DELETE' });
+      toast('Gelöscht');
       await renderPlan($('#main'));
     } catch (err) {
       fail(err);
@@ -299,6 +312,61 @@ function openEditor(item) {
   }).catch((e) => { $('#cands').innerHTML = `<p class="hint">${esc(e.message)}</p>`; });
 }
 
+// ---------- Vorbereitung ----------
+const DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const SLOT_NAME = { breakfast: 'Frühstück', lunch: 'Mittag', firma: 'Firma', snack: 'Snack', dinner: 'Abend' };
+
+async function renderPrep(main) {
+  const prep = await api(`/api/prep?week=${state.week}`);
+  if (!prep.sessions.length && !prep.fresh.length && !prep.dinners.length) {
+    main.innerHTML = '<p class="empty">Keine Vorbereitung – für diese Woche gibt es noch keinen Plan.</p>';
+    return;
+  }
+  const key = `prep:${state.week}`;
+  let checks = {};
+  try { checks = JSON.parse(localStorage.getItem(key) || '{}'); } catch { /* leer */ }
+  const save = () => { try { localStorage.setItem(key, JSON.stringify(checks)); } catch { /* ignorieren */ } };
+  const uses = (t) => t.uses.map((u) => `${DAY_SHORT[u.day]} ${SLOT_NAME[u.slot] || u.slot}`).join(', ');
+  const line = (id, t, sub) => `<label class="${checks[id] ? 'done' : ''}"><input type="checkbox" data-k="${esc(id)}" ${checks[id] ? 'checked' : ''}>
+    <span><span class="tt">${t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>` : esc(t.title)}</span>
+    <span class="sub">${esc(sub)}</span>${t.uses ? `<span class="for">für ${esc(uses(t))}</span>` : ''}</span></label>`;
+  const sessions = prep.sessions.map((s) => {
+    const total = s.tasks.reduce((a, t) => a + t.minutes, 0);
+    return `<section class="sess"><h3>${esc(s.label)}<small>ca. ${total} min</small></h3>${s.tasks.map((t) => line(`${s.key}:${t.recipe_id}`, t, `${t.minutes} min · ${t.portions} Port.${t.tight ? ' · knapp haltbar' : ''}`)).join('')}</section>`;
+  }).join('');
+  const fresh = prep.fresh.length ? `<section class="sess alt"><h3>Frisch kurz vorher<small>kaum haltbar</small></h3>${prep.fresh.map((t) => line(`fresh:${t.recipe_id}`, t, `${t.minutes} min`)).join('')}</section>` : '';
+  const dinners = prep.dinners.length ? `<section class="sess alt"><h3>Abendessen<small>frisch gekocht</small></h3>${prep.dinners.map((d) => line(`dinner:${d.day}:${d.recipe_id}`, { title: d.title }, `${DAYS[d.day]} · ${d.minutes} min · ${d.servings} Pers.`)).join('')}</section>` : '';
+  const warn = prep.warnings.length ? `<div class="warnbox">${prep.warnings.map((w) => `<div>${esc(w)}</div>`).join('')}</div>` : '';
+  main.innerHTML = `<div class="prep">${warn}${sessions}${fresh}${dinners}
+    <div class="actions"><button class="ghost" id="reset">Haken zurücksetzen</button><button class="primary" id="pdf">PDF / Drucken</button></div></div>`;
+  main.onchange = (e) => {
+    const cb = e.target.closest('input[data-k]');
+    if (!cb) return;
+    if (cb.checked) checks[cb.dataset.k] = 1; else delete checks[cb.dataset.k];
+    cb.parentElement.classList.toggle('done', cb.checked);
+    save();
+  };
+  $('#reset').onclick = () => { checks = {}; save(); renderPrep(main); };
+  $('#pdf').onclick = openPdf;
+}
+
+async function openPdf() {
+  // Fenster sofort öffnen (Popup-Blocker), danach füllen
+  const win = window.open('', '_blank');
+  try {
+    const bundle = await api(`/api/bundle?week=${state.week}`);
+    const { renderPrintHtml } = await import('/printview.js');
+    const html = renderPrintHtml({ week: state.week, items: bundle.items, shopping: bundle.shopping, prep: bundle.prep });
+    if (!win) { toast('Popups sind blockiert – bitte erlauben'); return; }
+    win.document.open();
+    win.document.write(html + '<script>window.addEventListener("load",()=>setTimeout(()=>window.print(),300))<\/script>');
+    win.document.close();
+  } catch (e) {
+    win?.close();
+    fail(e);
+  }
+}
+
 // ---------- Einkauf ----------
 async function renderShop(main) {
   const data = await api(`/api/shopping?week=${state.week}`);
@@ -306,7 +374,7 @@ async function renderShop(main) {
   let checks = {};
   try { checks = JSON.parse(localStorage.getItem(key) || '{}'); } catch { /* leer */ }
   const save = () => { try { localStorage.setItem(key, JSON.stringify(checks)); } catch { /* ignorieren */ } };
-  const line = (it) => `<label class="${checks[it.text] ? 'done' : ''}"><input type="checkbox" data-k="${esc(it.text)}" ${checks[it.text] ? 'checked' : ''}><span>${esc(it.text)}</span></label>`;
+  const line = (it) => `<label class="${checks[it.text] ? 'done' : ''}"><input type="checkbox" data-k="${esc(it.text)}" ${checks[it.text] ? 'checked' : ''}><span>${esc(it.text)}${it.when && it.when.length ? `<small class="when">${esc(it.when.join(' · '))}</small>` : ''}</span></label>`;
 
   if (!data.groups.length && !data.pantry.length) {
     main.innerHTML = '<p class="empty">Keine Einkaufsliste – für diese Woche gibt es noch keinen Plan.</p>';
@@ -326,7 +394,7 @@ async function renderShop(main) {
   };
   $('#reset').onclick = () => { checks = {}; save(); renderShop(main); };
   $('#copy').onclick = async () => {
-    const text = data.groups.map((g) => `${g.category}\n${g.items.map((i) => `- ${i.text}`).join('\n')}`).join('\n\n');
+    const text = data.groups.map((g) => `${g.category}\n${g.items.map((i) => `- ${i.text}${i.when && i.when.length ? ` (${i.when.join(', ')})` : ''}`).join('\n')}`).join('\n\n');
     try { await navigator.clipboard.writeText(text); toast('Kopiert'); } catch { toast('Kopieren nicht möglich'); }
   };
 }
